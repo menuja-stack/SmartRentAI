@@ -1,0 +1,43 @@
+# ============================================================
+# SmartRentAI — root .gitignore
+# ============================================================
+
+# ── Secrets — NEVER commit these ──
+.env
+.env.local
+*.env
+!.env.example
+
+# ── Node ──
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── React build output ──
+frontend/build/
+
+# ── Uploaded / scraped media (regenerable, not source) ──
+backend/uploads/**
+!backend/uploads/.gitkeep
+
+# ── Trained ML models & generated datasets (regenerable via train scripts) ──
+*.joblib
+ai-services/**/data/*.csv
+ai-services/**/uploaded_dataset.csv
+
+# ── Python ──
+__pycache__/
+*.pyc
+venv/
+.venv/
+catboost_info/
+
+# ── OS / editor cruft ──
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ── Logs ──
+*.log

@@ -1,0 +1,10 @@
+# Trained artifacts (regenerate via train_profile_model.py — large, ~350MB)
+*.joblib
+
+# Generated datasets (regenerate via generate_dataset.py / build_property_features.py)
+data/*.csv
+uploaded_dataset.csv
+
+# Python
+__pycache__/
+*.pyc
