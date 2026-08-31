@@ -4,7 +4,7 @@ import { Upload, Plus } from 'lucide-react';
 import api from '../api/axios';
 import { toast } from 'react-toastify';
 
-const DISTRICTS = ['Colombo','Gampaha','Kalutara','Kandy','Galle','Matara','Kurunegala','Negombo','Jaffna'];
+const DISTRICTS = ['Colombo','Gampaha','Kalutara','Kandy','Galle','Matara','Kurunegala','Negombo','Jaffna','Batticaloa','Trincomalee','Anuradhapura','Polonnaruwa','Ratnapura','Nuwara Eliya','Badulla','Hambantota','Matale','Monaragala','Puttalam'];
 const AMENITY_IDS = [1,2,3,4,5,6,7,8,9,10,11,12];
 const AMENITY_NAMES = ['WiFi','Parking','Air Conditioning','Gym','Swimming Pool','Security','Elevator','Generator','Water 24/7','CCTV','Garden','Laundry'];
 

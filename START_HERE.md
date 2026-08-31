@@ -63,7 +63,7 @@ SmartRentAI/
 │
 ├── ai-services/
 │   ├── recommendation/app.py   ← Hybrid recommender   (port 8001)
-│   ├── price-prediction/app.py ← RF + GBR predictor   (port 8002)
+│   ├── price-prediction/app.py ← CatBoost predictor, trained on real data (port 8002)
 │   └── chatbot/app.py          ← NLP intent classifier (port 8003)
 │
 └── database/schema.sql         ← Complete MySQL schema
@@ -128,7 +128,7 @@ npm start
 
 ## STEP 4 — Start the AI Microservices (Python)
 
-You need **3 separate terminals**, one per service.
+You need **4 separate terminals**, one per service.
 
 ### Install Python dependencies (first time only)
 
@@ -171,11 +171,12 @@ python app.py
 cd ai-services/price-prediction
 python app.py
 ```
-Then train the model (first time):
-```bash
-curl -X POST http://localhost:8002/train
-```
-Or visit `http://localhost:8002/train` in browser (GET not supported — use Postman or curl).
+> Model files (`price_model.joblib`, `encoders.joblib`, `scaler.joblib`) are
+> git-ignored like the recommendation models — train them once after a fresh clone:
+> ```bash
+> python train.py    # reads properties+locations from MySQL, real data only
+> ```
+> There is no `/train` HTTP endpoint — training is offline via the script above.
 
 **Terminal C — Chatbot (port 8003):**
 ```bash

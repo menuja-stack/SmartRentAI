@@ -56,9 +56,14 @@ AI Microservices (Python Flask)
 | Service | Port | File | Status |
 |---------|------|------|--------|
 | Recommendation | 8001 | `ai-services/recommendation/app.py` | **Trained — profile-based "For You"** |
-| Price Prediction | 8002 | `ai-services/price-prediction/app.py` | Has model |
-| Chatbot | 8003 | `ai-services/chatbot/app.py` | Has model |
+| Price Prediction | 8002 | `ai-services/price-prediction/app.py` | **Trained on REAL data (CatBoost) — 2026-08-29** |
+| Chatbot | 8003 | `ai-services/chatbot/app.py` | Has model (small dataset — see AI_MODELS.md) |
 | Location Intelligence | 8004 | `ai-services/location-intelligence/app.py` | Trained |
+
+Every service now has a non-invasive `evaluate_model.py` alongside its `app.py`
+(loads the deployed model, reconstructs its real held-out test split, writes report
+figures to `outputs/` — never retrains, never edits the service itself). See
+AI_MODELS.md for the full metrics from each.
 
 ### Web Scraper (Python)
 - **Main script**: `ai-services/scraper/scraper.py`
@@ -137,10 +142,18 @@ SmartRentAI/
     │   ├── train_profile_model.py         ← two-stage model training
     │   ├── recommender.py                 ← inference core
     │   ├── update_preferences.py          ← Phase-7 feedback learning job
+    │   ├── evaluate_model.py              ← non-invasive eval, reconstructs real test split
     │   └── app.py                         ← Flask service
-    ├── location-intelligence/app.py       ← SafeRent Score :8004
-    ├── chatbot/app.py                     ← chatbot :8003
-    └── price-prediction/app.py            ← price prediction :8002
+    ├── location-intelligence/
+    │   ├── app.py                         ← SafeRent Score :8004 (train via POST /train)
+    │   └── evaluate_model.py              ← non-invasive eval → outputs/fig7_*.png
+    ├── chatbot/
+    │   ├── app.py                         ← chatbot :8003 (auto-trains on import if no model file)
+    │   └── evaluate_model.py              ← 4-fold CV eval (no held-out set in app.py) → outputs/
+    └── price-prediction/
+        ├── train.py                       ← offline training (real DB data) → price_model.joblib
+        ├── evaluate_model.py              ← non-invasive eval → outputs/fig_*.png
+        └── app.py                         ← price prediction :8002
 ```
 
 ---
@@ -189,6 +202,13 @@ python train_profile_model.py       # -> profile_model.joblib + property_feature
 python app.py                       # serve :8001
 # Phase-7 learning job (on demand / cron):
 python update_preferences.py --commit
+```
+
+### Price Prediction retrain (on demand — real DB data, no synthetic)
+```powershell
+cd "C:\Users\Menuja\Desktop\Final Year Project\SmartRentAI\ai-services\price-prediction"
+python train.py             # reads properties+locations from MySQL -> price_model.joblib
+python app.py                # serve :8002 (restart after retraining)
 ```
 
 ### 5. Web Scraper (run on demand)

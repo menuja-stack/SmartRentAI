@@ -162,6 +162,16 @@ df['property_type_enc'] = le_type.fit_transform(df['property_type'].fillna('apar
 district_means = df.groupby('district')['monthly_rent'].mean()
 df['district_enc'] = df['district'].map(district_means)
 
+# District centroid lat/lng — lets the serving API derive coordinates from
+# district alone, since POST /predict requests only ever carry district
+# (never raw latitude/longitude).
+district_latlng = {}
+global_latlng = {}
+for coord in ['latitude', 'longitude']:
+    if coord in df.columns:
+        district_latlng[coord] = df.groupby('district')[coord].median().to_dict()
+        global_latlng[coord] = float(df[coord].median())
+
 print(f'\nFinal clean dataset: {len(df)} rows')
 print(f'Price range: LKR {df["monthly_rent"].min():,.0f} – {df["monthly_rent"].max():,.0f}')
 
@@ -294,7 +304,7 @@ def eval_model(model, X_tr, y_tr, X_te, y_te, name, fit_params=None):
     mae     = mean_absolute_error(y_te, preds)
     rmse    = np.sqrt(mean_squared_error(y_te, preds))
     r2      = r2_score(y_te, preds)
-    cv      = cross_val_score(model, X_tr, y_tr, cv=5, scoring='r2', n_jobs=-1)
+    cv      = cross_val_score(model, X_tr, y_tr, cv=5, scoring='r2', n_jobs=1)
     return {
         'name': name, 'model': model,
         'MAE': mae, 'RMSE': rmse, 'R2': r2,
@@ -315,15 +325,15 @@ if HAS_OPTUNA:
             'subsample':        trial.suggest_float('subsample', 0.6, 1.0),
             'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 1.0),
             'min_child_weight': trial.suggest_int('min_child_weight', 1, 10),
-            'random_state': 42, 'n_jobs': -1, 'verbosity': 0,
+            'random_state': 42, 'n_jobs': 1, 'verbosity': 0,
         }
         cv = cross_val_score(XGBRegressor(**params), X_train_s, y_train,
-                             cv=5, scoring='r2', n_jobs=-1)
+                             cv=5, scoring='r2', n_jobs=1)
         return cv.mean()
 
     study_xgb = optuna.create_study(direction='maximize')
     study_xgb.optimize(xgb_objective, n_trials=40, show_progress_bar=False)
-    best_xgb_params = {**study_xgb.best_params, 'random_state': 42, 'n_jobs': -1, 'verbosity': 0}
+    best_xgb_params = {**study_xgb.best_params, 'random_state': 42, 'n_jobs': 1, 'verbosity': 0}
     print(f'  Best params (Optuna, 40 trials): {study_xgb.best_params}')
 else:
     param_grid_xgb = {
@@ -335,11 +345,11 @@ else:
         'min_child_weight': [1, 3, 5],
     }
     xgb_search = RandomizedSearchCV(
-        XGBRegressor(random_state=42, n_jobs=-1, verbosity=0),
-        param_grid_xgb, n_iter=30, cv=5, scoring='r2', random_state=42, n_jobs=-1
+        XGBRegressor(random_state=42, n_jobs=1, verbosity=0),
+        param_grid_xgb, n_iter=30, cv=5, scoring='r2', random_state=42, n_jobs=1
     )
     xgb_search.fit(X_train_s, y_train)
-    best_xgb_params = {**xgb_search.best_params_, 'random_state': 42, 'n_jobs': -1, 'verbosity': 0}
+    best_xgb_params = {**xgb_search.best_params_, 'random_state': 42, 'n_jobs': 1, 'verbosity': 0}
     print(f'  Best params (RandomSearch): {xgb_search.best_params_}')
 
 xgb_model = XGBRegressor(**best_xgb_params)
@@ -360,7 +370,7 @@ param_grid_gbr = {
 }
 gbr_search = RandomizedSearchCV(
     GradientBoostingRegressor(random_state=42),
-    param_grid_gbr, n_iter=30, cv=5, scoring='r2', random_state=42, n_jobs=-1
+    param_grid_gbr, n_iter=30, cv=5, scoring='r2', random_state=42, n_jobs=1
 )
 gbr_search.fit(X_train_s, y_train)
 best_gbr_params = gbr_search.best_params_
@@ -542,6 +552,8 @@ print('='*60)
 encoders = {
     'le_property_type': le_type,
     'district_means':   district_means.to_dict(),
+    'district_latlng':  district_latlng,
+    'global_latlng':    global_latlng,
     'furnished_map':    furnished_map,
     'feature_cols':     keep_features,
     'best_model_name':  best_name,

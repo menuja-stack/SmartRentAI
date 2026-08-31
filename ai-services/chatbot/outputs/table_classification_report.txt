@@ -1,0 +1,40 @@
+Chatbot Intent Classifier — Cross-Validated Evaluation
+============================================================
+Total examples: 53
+Intents: 10
+Evaluation method: 4-fold stratified cross-validation (out-of-fold predictions)
+Reason: app.py trains on all examples with no held-out set; dataset is
+too small (4-6 examples/intent) for a single train/test split to be meaningful.
+
+Accuracy: 0.4151
+F1 (macro): 0.3397
+
+                         precision    recall  f1-score   support
+
+         account_issues       0.44      0.67      0.53         6
+     booking_assistance       0.25      0.20      0.22         5
+               farewell       0.00      0.00      0.00         4
+            general_faq       0.00      0.00      0.00         5
+               greeting       0.00      0.00      0.00         4
+       landlord_support       0.24      0.67      0.35         6
+      lease_information       0.75      0.60      0.67         5
+      nearby_facilities       0.50      0.33      0.40         6
+property_recommendation       0.80      0.67      0.73         6
+         rental_pricing       0.40      0.67      0.50         6
+
+               accuracy                           0.42        53
+              macro avg       0.34      0.38      0.34        53
+           weighted avg       0.36      0.42      0.37        53
+
+
+Examples per intent:
+rental_pricing             6
+property_recommendation    6
+landlord_support           6
+account_issues             6
+nearby_facilities          6
+lease_information          5
+booking_assistance         5
+general_faq                5
+greeting                   4
+farewell                   4

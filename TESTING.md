@@ -112,6 +112,10 @@ curl http://localhost:5000/api/properties/saved \
 ## Price Prediction
 
 > Start `:8002` first: `cd ai-services/price-prediction && python app.py`
+> Model: CatBoost, trained on 820 real scraped/manual listings (not synthetic —
+> see AI_MODELS.md → Service 2). Inputs: `district`, `property_type`, `bedrooms`,
+> `bathrooms`, `furnished` (`area_sqft`/`has_parking`/`has_pool`/`has_gym` are NOT
+> used — `area_sqft` was dropped for near-zero coverage in the real dataset).
 
 ```bash
 curl -X POST http://localhost:5000/api/predictions/price \
@@ -121,11 +125,7 @@ curl -X POST http://localhost:5000/api/predictions/price \
     "property_type": "apartment",
     "bedrooms": 2,
     "bathrooms": 1,
-    "area_sqft": 850,
-    "furnished": "furnished",
-    "has_parking": 1,
-    "has_pool": 0,
-    "has_gym": 0
+    "furnished": "furnished"
   }'
 ```
 
@@ -133,12 +133,19 @@ curl -X POST http://localhost:5000/api/predictions/price \
 # Direct to AI service (bypasses backend)
 curl -X POST http://localhost:8002/predict \
   -H "Content-Type: application/json" \
-  -d '{"district":"Kandy","property_type":"house","bedrooms":3,"bathrooms":2,"area_sqft":1200,"furnished":"semi-furnished","has_parking":1,"has_pool":0,"has_gym":0}'
+  -d '{"district":"Kandy","property_type":"house","bedrooms":3,"bathrooms":2,"furnished":"semi-furnished"}'
 ```
 
-### Train on synthetic data
 ```bash
-curl -X POST http://localhost:8002/train
+# Model metadata: metrics, feature list, district price ranking, EDA notes
+curl http://localhost:8002/model-info
+```
+
+### Retrain (offline, on real DB data — no `/train` HTTP endpoint anymore)
+```bash
+cd ai-services/price-prediction
+python train.py    # reads properties+locations from MySQL -> price_model.joblib
+python evaluate_model.py   # regenerates outputs/*.png report figures
 ```
 
 ---

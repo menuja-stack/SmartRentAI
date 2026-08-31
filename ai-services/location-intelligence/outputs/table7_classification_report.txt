@@ -1,0 +1,21 @@
+SafeRent Disaster Classifier — Held-out Test Set Evaluation
+=================================================================
+Test set size: 80,355 rows (20% split, stratified)
+Positive class rate (test): 10.81%
+AUC-ROC: 0.8565
+Average Precision (PR-AUC): 0.6831
+
+              precision    recall  f1-score   support
+
+ No Disaster       0.97      0.85      0.91     71671
+    Disaster       0.39      0.80      0.52      8684
+
+    accuracy                           0.84     80355
+   macro avg       0.68      0.82      0.71     80355
+weighted avg       0.91      0.84      0.86     80355
+
+
+Confusion Matrix (rows=true, cols=predicted):
+                 Pred: No Disaster   Pred: Disaster
+True: No Disaster       60,701           10,970
+True: Disaster           1,773            6,911

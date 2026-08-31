@@ -63,10 +63,8 @@ export default function LoginPage() {
           <Link to="/register" className="text-primary-600 font-medium hover:underline">Create one</Link>
         </div>
 
-        {/* Demo credentials */}
-        <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl text-xs text-gray-500 text-center">
-          Demo admin: <strong>admin@smartrentai.lk</strong> / <strong>Admin@123</strong>
-        </div>
+        
+        
       </div>
     </div>
   );

@@ -43,13 +43,45 @@ PROPERTY_TYPES = ['apartment', 'house', 'room', 'villa', 'commercial']
 FURNISHED_OPTS = ['unfurnished', 'semi-furnished', 'furnished']
 
 
-def _build_features(data: dict, encoders: dict, scaler) -> np.ndarray:
-    """Convert raw predict request into scaled feature vector."""
+def _district_coord(encoders: dict, coord: str, district: str) -> float:
+    """District centroid lat/lng saved at train time — requests never carry raw coords."""
+    per_district = encoders.get('district_latlng', {}).get(coord, {})
+    global_coord = encoders.get('global_latlng', {}).get(coord, 0.0)
+    return float(per_district.get(district, global_coord))
+
+
+def _build_features(data: dict, encoders: dict, scaler, bundle: dict):
+    """
+    Convert a raw /predict request into whatever input shape the trained model
+    expects. XGBoost/GradientBoosting were fit on a numeric-encoded, scaled
+    array; CatBoost was fit on a raw DataFrame (native categoricals, no
+    scaling) — so this branches on which model actually won training.
+    Returns (X, is_scaled_array).
+    """
     district      = data.get('district', 'Colombo')
     property_type = data.get('property_type', 'apartment')
     bedrooms      = int(data.get('bedrooms', 2))
     bathrooms     = int(data.get('bathrooms', 1))
     furnished     = data.get('furnished', 'unfurnished')
+
+    furnished_map = encoders['furnished_map']
+    furnished_num = furnished_map.get(furnished, 0)
+
+    model_name = bundle.get('model_name', encoders.get('best_model_name'))
+
+    if model_name == 'CatBoost':
+        cat_cols = encoders.get('cat_feature_cols') or bundle['feature_cols']
+        row = {
+            'bedrooms':      bedrooms,
+            'bathrooms':     bathrooms,
+            'furnished_num': furnished_num,
+            'latitude':      _district_coord(encoders, 'latitude', district),
+            'longitude':     _district_coord(encoders, 'longitude', district),
+            'district':      district,
+            'property_type': property_type,
+        }
+        X = pd.DataFrame([[row[c] for c in cat_cols]], columns=cat_cols)
+        return X, False
 
     # Encode district via target encoding (district → mean rent learned during training)
     district_means = encoders['district_means']
@@ -61,11 +93,6 @@ def _build_features(data: dict, encoders: dict, scaler) -> np.ndarray:
     pt_clean = property_type if property_type in le.classes_ else le.classes_[0]
     property_type_enc = int(le.transform([pt_clean])[0])
 
-    # Ordinal furnished
-    furnished_map = encoders['furnished_map']
-    furnished_num = furnished_map.get(furnished, 0)
-
-    # Feature order must match training: ['bedrooms','bathrooms','furnished_num','property_type_enc','district_enc']
     feature_cols = encoders['feature_cols']
     values = {
         'bedrooms':          bedrooms,
@@ -73,9 +100,11 @@ def _build_features(data: dict, encoders: dict, scaler) -> np.ndarray:
         'furnished_num':     furnished_num,
         'property_type_enc': property_type_enc,
         'district_enc':      district_enc,
+        'latitude':          _district_coord(encoders, 'latitude', district),
+        'longitude':         _district_coord(encoders, 'longitude', district),
     }
     X = np.array([[values[c] for c in feature_cols]], dtype=float)
-    return scaler.transform(X)
+    return scaler.transform(X), True
 
 
 @app.route('/predict', methods=['POST'])
@@ -94,7 +123,7 @@ def predict():
     data = request.get_json(silent=True) or {}
 
     try:
-        X_scaled = _build_features(data, encoders, scaler)
+        X_ready, _ = _build_features(data, encoders, scaler, bundle)
     except Exception as e:
         return jsonify({'error': f'Feature encoding failed: {str(e)}'}), 400
 
@@ -103,7 +132,7 @@ def predict():
     top_feats  = bundle.get('top_features', [])
     metrics    = bundle.get('metrics', {})
 
-    predicted  = float(model.predict(X_scaled)[0])
+    predicted  = float(model.predict(X_ready)[0])
     predicted  = max(predicted, 5000)  # floor at LKR 5,000
 
     # Confidence interval: ±1 CV-residual std (68% coverage)
@@ -113,10 +142,14 @@ def predict():
     # Human-readable factor explanations for top 3 features
     factor_labels = {
         'district_enc':      f"Location ({data.get('district','Colombo')}) — strongest price driver",
+        'district':          f"Location ({data.get('district','Colombo')}) — strongest price driver",
         'bathrooms':         f"Bathrooms ({data.get('bathrooms',1)}) — corr 0.21 with price",
         'bedrooms':          f"Bedrooms ({data.get('bedrooms',2)}) — corr 0.12 with price",
         'property_type_enc': f"Property type ({data.get('property_type','apartment')}) — corr 0.42 with price",
+        'property_type':     f"Property type ({data.get('property_type','apartment')}) — corr 0.42 with price",
         'furnished_num':     f"Furnished status ({data.get('furnished','unfurnished')}) — corr 0.15 with price",
+        'latitude':          f"Location coordinates (latitude) — district centroid",
+        'longitude':         f"Location coordinates (longitude) — district centroid",
     }
     top_3_factors = [factor_labels.get(f, f) for f in top_feats[:3]]
 
@@ -174,22 +207,26 @@ def model_info():
 
     district_means = encoders.get('district_means', {})
     top_districts  = sorted(district_means.items(), key=lambda x: x[1], reverse=True)
+    feature_cols   = encoders.get('feature_cols', [])
+    has_latlng     = 'latitude' in feature_cols or 'longitude' in feature_cols
 
     return jsonify({
         'model_name':    bundle.get('model_name'),
         'metrics':       bundle.get('metrics', {}),
         'top_features':  bundle.get('top_features', []),
-        'feature_cols':  encoders.get('feature_cols', []),
+        'feature_cols':  feature_cols,
         'district_price_ranking': [
             {'district': d, 'avg_rent': round(v, 0)}
             for d, v in top_districts
         ],
         'eda_notes': {
-            'total_rows_after_cleaning': 324,
+            'total_rows_after_cleaning': bundle.get('metrics', {}).get('samples', 324),
             'outliers_removed':          44,
             'beds_baths_imputed':        83,
             'area_sqft_coverage':        '0.3% — dropped (zero variance)',
-            'lat_lng_coverage':          '54% — imputed then dropped (collinear with district)',
+            'lat_lng_coverage':          ('kept as a feature — district centroid used at serve time'
+                                          if has_latlng else
+                                          '54% — imputed then dropped (collinear with district)'),
             'price_range':               'LKR 9,500 – 700,000',
         },
     })

@@ -2,6 +2,72 @@
 
 ---
 
+## [1.3.0] — 2026-08-30 — Real-Data Price Model + Model Evaluation Suite
+
+### Headline
+Price Prediction (`:8002`) is no longer trained on synthetic data — retrained on 820 real
+scraped/manual listings with a proper 3-model comparison. A `/predict` crash introduced by
+that retrain was found and fixed the same day. All four AI services now have a standalone,
+non-invasive evaluation script that produces report-ready figures (confusion matrices,
+ROC/PR curves, predicted-vs-actual, residuals, feature importance) from their real
+held-out test data.
+
+---
+
+### Price Prediction — Retrained on Real Data
+- `ai-services/price-prediction/train.py` now pulls training data straight from the live
+  `properties`/`locations` tables (was: 2,000 rows from `generate_synthetic_data()`).
+  1,060 rows fetched → 957 after IQR outlier filtering → 820 used for modelling
+  (`area_sqft` dropped, 99.9% null; bedrooms/bathrooms zero-values imputed with district
+  median).
+- **3-model comparison** (Optuna-tuned, 5-fold CV): XGBoost, GradientBoosting, CatBoost.
+  **CatBoost wins on CV R² (0.4711)** — selected by the more robust cross-validated
+  metric rather than a single test-split R².
+- New artifacts: `price_model.joblib`, `encoders.joblib`, `scaler.joblib` (replacing the
+  old synthetic-trained `model.joblib`). The `/train` HTTP endpoint was removed —
+  retraining is now `python train.py` (offline, against the live DB) followed by a
+  service restart.
+
+### Bug Fix — `/predict` 400 "Feature encoding failed: 'latitude'"
+- **Root cause 1**: `train.py`'s data-driven feature selection kept `latitude`/`longitude`
+  as model features (43% raw coverage, correlation 0.23–0.28 with price), but
+  `encoders.joblib` never stored district→coordinate centroids, and `/predict` requests
+  only ever send a district name — never raw coordinates. Fix: `train.py` now saves a
+  `district_latlng` + `global_latlng` fallback lookup; `app.py`'s `_build_features()`
+  derives lat/lng from the request's district at serve time.
+- **Root cause 2 (latent, would have hit next)**: the winning model, CatBoost, needs a
+  *raw categorical* DataFrame (native `district`/`property_type` strings via a `Pool`),
+  a completely different input schema from XGBoost/GradientBoosting's
+  target-encoded-then-scaled array. `_build_features()` is now model-aware and branches
+  on `encoders['best_model_name']`.
+- Also cleaned up 9 duplicate `python app.py` processes left over from earlier restart
+  attempts, all fighting over port 8002.
+
+### Model Evaluation Suite (new — all 4 AI services)
+Each service gets a standalone `evaluate_model.py` that loads the **already-trained,
+already-deployed** model and reconstructs the **exact** held-out test split used at
+training time (same source data, same `random_state`, same split params) — it never
+retrains and never modifies the service's own `app.py` or training script. Verified in
+every case that reconstructed metrics match the deployed model's saved metrics exactly.
+
+| Service | New outputs |
+|---|---|
+| Location Intelligence (:8004) | Confusion matrix (counts + normalised), ROC curve, precision-recall curve, feature importance, probability distribution, classification report |
+| Price Prediction (:8002) | Model comparison chart, predicted-vs-actual, residual analysis (+ existing correlation heatmap, feature importance) |
+| Recommendation (:8001) | Confusion matrices for both Stage-1 classifiers, regression MAE-by-target chart, predicted-vs-actual scatter, feature importance |
+| Chatbot (:8003) | Dataset composition, confusion matrix (4-fold CV — see finding below), per-intent F1 |
+
+**Notable finding**: the chatbot has no held-out test set in its production training code
+(`app.py` fits on all 53 examples). Evaluated via 4-fold stratified cross-validation
+instead — the defensible approach for a dataset this small — and found **accuracy 41.5%,
+F1(macro) 0.34**, the weakest of the four services. Documented in AI_MODELS.md and added
+to TODO.md as a HIGH-priority item (needs a larger training set or a semantic-embedding
+upgrade), rather than left as a silent gap.
+
+See AI_MODELS.md for full metrics per service, and TODO.md for what's still open.
+
+---
+
 ## [1.2.0] — 2026-07-08 — Loading States, Scraper UI, DB Recovery
 
 ### Headline

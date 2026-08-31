@@ -116,12 +116,19 @@ Body (any subset): { title, description, monthly_rent, deposit, bedrooms,
 | GET | `/predictions/history` | Required | Get user's past predictions |
 
 ### POST `/predictions/price`
+Model: CatBoost, trained on 820 real scraped/manual listings (see AI_MODELS.md → Service 2).
+`area_sqft`/`has_parking`/`has_pool`/`has_gym` are **not** used by the current model —
+sending them is harmless but they're ignored.
 ```json
 Body: { "district": "Colombo", "property_type": "apartment", "bedrooms": 2,
-        "bathrooms": 1, "area_sqft": 800, "furnished": "semi-furnished",
-        "has_parking": 0, "has_pool": 0, "has_gym": 0 }
-200: { "predicted_price": 75000, "range": { "min": 60000, "max": 90000 },
-       "confidence": 0.85, "model_version": "1.0" }
+        "bathrooms": 1, "furnished": "semi-furnished" }
+200: { "predicted_price": 190337.54,
+       "price_range": { "low": 0, "high": 406251.93 },
+       "confidence": 0.6689, "confidence_interval": 215914.39,
+       "model_info": { "name": "CatBoost", "mae": 91678.65, "r2": 0.4689,
+                        "cv_r2": 0.4711, "training_samples": 820 },
+       "top_3_factors": ["Location (Colombo) — strongest price driver", "..."],
+       "model_version": "2.0-real-data" }
 503: { "error": "Price prediction service offline" }
 ```
 

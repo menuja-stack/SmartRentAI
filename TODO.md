@@ -1,6 +1,32 @@
 # TODO.md — SmartRentAI Incomplete Work
 
-Last updated: 2026-07-08
+Last updated: 2026-08-30
+
+---
+
+## ✅ Recently Completed (v1.3.0 — 2026-08-30)
+
+- **Price Prediction retrained on REAL data** — was 2,000 synthetic rows, now 820 real
+  scraped/manual rows from the live DB. 3-model comparison (XGBoost, GradientBoosting,
+  CatBoost) with Optuna tuning + 5-fold CV; CatBoost wins (CV R²=0.4711, MAE≈LKR 91,679).
+  See AI_MODELS.md → Service 2.
+- **Fixed a `/predict` 400 crash** (`Feature encoding failed: 'latitude'`) — `train.py`
+  now saves district→lat/lng centroids into `encoders.joblib` and `app.py` derives
+  lat/lng from the district at serve time, since `/predict` requests never carry raw
+  coordinates. A second latent bug (CatBoost needs raw categorical input, not the
+  encoded/scaled array the other two models use) was fixed in the same pass —
+  `_build_features()` in `app.py` is now model-aware.
+- **Model evaluation suite added for all 4 AI services** — non-invasive `evaluate_model.py`
+  per service (loads the deployed model, reconstructs the exact held-out test split, never
+  retrains or edits the service's own code). Produces confusion matrices, ROC/PR curves,
+  predicted-vs-actual, residuals, feature importance, and text reports in each service's
+  `outputs/` folder — first defensible evaluation section for Price Prediction,
+  Recommendation, and Chatbot (Location Intelligence already had it).
+- **Chatbot weakness now empirically measured, not just suspected** — 4-fold stratified
+  CV (the deployed model has no held-out set to evaluate against directly) gives
+  accuracy 41.5%, F1(macro) 0.34 on the 53-example/10-intent training set. See new HIGH
+  priority item below — this replaces the old "no training data docs" LOW item, since
+  the docs now exist (AI_MODELS.md) and the real problem is the dataset is too small.
 
 ---
 
@@ -50,11 +76,16 @@ Last updated: 2026-07-08
 - This is fine functionally; persisting would only help analytics/history.
 - Optional fix: INSERT top results into `recommendations` after each `/recommendations` call.
 
-### Price Prediction — Only Synthetic Training Data
-- Model is trained on 2,000 synthetic rows, not real scraped data
-- Predictions may be inaccurate for lower-cost districts
-- **Fix**: POST `/train` at `:8002` with scraped properties from DB as training data
-- Real data format: extract `district, property_type, bedrooms, bathrooms, area_sqft, furnished, monthly_rent` from `properties` table
+### Chatbot — Training Set Too Small (empirically confirmed)
+- 4-fold stratified CV on the 53-example/10-intent dataset gives **accuracy 41.5%,
+  F1(macro) 0.34** — see `ai-services/chatbot/outputs/` and AI_MODELS.md → Service 3.
+- Root cause: short generic phrases ("thank you", "hello") give TF-IDF very little
+  signal with only 4–6 examples per class; several intents share common words.
+- **Fix**: either (a) grow `TRAINING_DATA` in `app.py` substantially (aim for 20–30+
+  examples per intent), or (b) swap TF-IDF+NB for sentence-transformer embeddings +
+  semantic similarity matching, which needs far less data per class to generalise.
+  Also add entity extraction (district, budget, bedrooms) so the bot can query the
+  `properties` table for real listings instead of only returning templated replies.
 
 ### No Email Verification
 - `is_verified` is hardcoded to `1` on register (`auth.controller.js` line: `VALUES (?, ?, ?, ?, ?, 1)`)
@@ -116,9 +147,6 @@ Last updated: 2026-07-08
   still no *automatic* schedule.
 - Consider: Windows Task Scheduler, node-cron in backend, or cron job
 - Also missing: a **Stop/cancel** button for a running job, and a `--no-db` dry-run toggle in the UI
-
-### Chatbot — No Training Data Docs
-- `chatbot_model.joblib` exists but no documentation on what intents were trained, how many samples, or how to retrain
 
 ### Property Detail — `getSimilar` Unverified
 - `GET /api/recommendations/similar/:id` route exists
